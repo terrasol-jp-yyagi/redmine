@@ -1,0 +1,27 @@
+# frozen_string_literal: true
+#
+# Gemfile.local used inside the container image.
+#
+# Redmine's Gemfile only declares the database gem that matches the adapter
+# found in config/database.yml. Inside the container the adapter is chosen at
+# runtime, so the dependency set must not depend on that file: declare every
+# supported adapter here, skipping any the Gemfile already added, so that the
+# Gemfile.lock produced at build time stays valid whatever the runtime adapter.
+#
+# Keep the version constraints in sync with the `adapters.each` block in Gemfile.
+
+gem 'puma'
+
+{
+  'mysql2'                         => ['~> 0.5.0'],
+  'with_advisory_lock'             => [],
+  'trilogy'                        => ['~> 2.12.4'],
+  'pg'                             => ['~> 1.6.2'],
+  'sqlite3'                        => ['~> 2.9.4'],
+  'tiny_tds'                       => ['~> 3.4'],
+  'activerecord-sqlserver-adapter' => ['~> 8.1.2']
+}.each do |name, requirements|
+  next if dependencies.any? { |dep| dep.name == name }
+
+  gem name, *requirements
+end
