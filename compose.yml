@@ -1,0 +1,88 @@
+# Redmine with a configurable database backend.
+#
+#   cp .env.example .env            # pick a database block in .env
+#   docker compose up -d            # SQLite (default, no extra service)
+#   docker compose --profile postgres up -d
+#   docker compose --profile mysql up -d
+#   docker compose --profile mssql up -d
+#
+# The redmine service reads every REDMINE_* / RAILS_* variable from .env.
+# The optional database services reuse the same REDMINE_DB_* values so the
+# credentials only have to be written once.
+
+name: redmine
+
+services:
+  redmine:
+    build: .
+    # Build and run the Redmine image for amd64 (Intel/AMD servers). On Apple
+    # Silicon this means an emulated build and runtime, which is slower.
+    platform: linux/amd64
+    image: ${REDMINE_IMAGE:-redmine-custom:7.0.2}
+    restart: unless-stopped
+    ports:
+      - "${REDMINE_PORT:-3000}:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RAILS_LOG_TO_STDOUT: "true"
+    volumes:
+      - redmine-files:/usr/src/redmine/files
+      - redmine-sqlite:/usr/src/redmine/sqlite
+      # Plugins and custom themes are plain directories; mount them read-write
+      # (plugins may need to write assets) from the host if you use any:
+      # - ./plugins:/usr/src/redmine/plugins
+      # - ./themes/mytheme:/usr/src/redmine/themes/mytheme
+
+  # --- PostgreSQL -----------------------------------------------------------
+  postgres:
+    image: postgres:17
+    profiles: [postgres]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${REDMINE_DB_DATABASE:-redmine}
+      POSTGRES_USER: ${REDMINE_DB_USERNAME:-redmine}
+      POSTGRES_PASSWORD: ${REDMINE_DB_PASSWORD:-redmine}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  # --- MySQL ----------------------------------------------------------------
+  mysql:
+    image: mysql:8.4
+    profiles: [mysql]
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --transaction-isolation=READ-COMMITTED
+    environment:
+      MYSQL_DATABASE: ${REDMINE_DB_DATABASE:-redmine}
+      MYSQL_USER: ${REDMINE_DB_USERNAME:-redmine}
+      MYSQL_PASSWORD: ${REDMINE_DB_PASSWORD:-redmine}
+      MYSQL_RANDOM_ROOT_PASSWORD: "1"
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  # --- SQL Server -----------------------------------------------------------
+  # The Microsoft image is amd64 only; on Apple Silicon it runs under emulation
+  # and needs a minute or two to accept logins. The redmine entrypoint waits for
+  # it (REDMINE_DB_WAIT_TIMEOUT) and creates the database with the sa account.
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    profiles: [mssql]
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${REDMINE_DB_PASSWORD:-Redmine_Passw0rd!}
+    volumes:
+      - mssql-data:/var/opt/mssql
+
+volumes:
+  redmine-files:
+  redmine-sqlite:
+  postgres-data:
+  mysql-data:
+  mssql-data:
